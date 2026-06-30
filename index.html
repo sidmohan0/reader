@@ -165,19 +165,25 @@
   #progress{position:sticky;top:0;height:3px;z-index:5;background:transparent}
   #progress .bar{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-glow));transition:width .25s}
   .stage-inner{
-    flex:1;width:100%;max-width:calc(var(--read-measure) + 8rem);
+    flex:1;width:100%;max-width:calc(var(--read-measure) + 16rem);
     margin:0 auto;padding:48px clamp(20px,5vw,64px) 200px;
   }
-  #docMeta{color:var(--faint);font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px}
+  #docMeta{
+    max-width:var(--read-measure);margin:0 auto 10px;
+    color:var(--faint);font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;
+  }
   #sectionTitle{
     font-family:var(--font-read);color:var(--read-idle);font-weight:600;
     font-size:clamp(1.7rem,4vw,2.4rem);line-height:1.12;letter-spacing:-.01em;
-    margin:0 0 6px;max-width:var(--read-measure);
+    margin:0 auto 6px;max-width:var(--read-measure);
   }
-  #sectionKicker{color:var(--accent);font-weight:600;font-size:.8rem;letter-spacing:.16em;text-transform:uppercase;margin-bottom:18px}
+  #sectionKicker{
+    max-width:var(--read-measure);margin:0 auto 18px;
+    color:var(--accent);font-weight:600;font-size:.8rem;letter-spacing:.16em;text-transform:uppercase;
+  }
   #sectionBody{
     font-family:var(--font-read);font-size:var(--read-size);line-height:1.72;
-    max-width:var(--read-measure);color:var(--read-idle);font-weight:400;
+    width:100%;color:var(--read-idle);font-weight:400;
     transition:color var(--speed);
   }
   /* focus / spotlight effect during playback */
@@ -197,12 +203,12 @@
   #sectionBody .sentence{cursor:pointer}
   #sectionBody.playing.nodim,
   #sectionBody.playing.nodim .sentence.spoken{color:var(--read-idle)}
-  .text-block{margin:0 0 1.2rem}
+  .text-block{margin:0 auto 1.2rem;max-width:var(--read-measure)}
   .media-block{
     font-family:var(--font-ui);font-size:.86rem;line-height:1.45;color:var(--chrome);
-    margin:1.6rem 0;padding:14px 16px;border:1px solid var(--hair);
+    width:100%;margin:1.6rem 0;padding:14px 16px;border:1px solid var(--hair);
     border-radius:12px;background:color-mix(in srgb,var(--elev) 72%, transparent);
-    overflow:hidden;
+    overflow:visible;
   }
   .media-block .media-label{
     display:block;margin-bottom:10px;color:var(--accent);font-size:.72rem;
@@ -217,15 +223,16 @@
     border-radius:8px;color:var(--muted);
   }
   .media-caption{margin-top:10px;color:var(--muted)}
-  .table-scroll{overflow-x:auto}
+  .table-scroll{max-width:100%;overflow-x:visible}
   .table-block table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
   .table-block th,.table-block td{
     padding:8px 10px;border-bottom:1px solid var(--hair);
-    text-align:left;vertical-align:top;white-space:normal;
+    text-align:left;vertical-align:top;white-space:normal;overflow-wrap:anywhere;
   }
   .table-block th{color:var(--read-idle);font-weight:600;background:var(--accent-soft)}
   .table-block tr:last-child td{border-bottom:none}
   .empty-note{
+    max-width:var(--read-measure);margin:0 auto;
     font-family:var(--font-ui);font-size:.95rem;color:var(--muted);line-height:1.6;
     border:1px solid var(--hair);border-radius:12px;padding:18px 20px;background:var(--elev);
   }
@@ -315,6 +322,11 @@
     .stage-inner{padding-bottom:160px}
     #settings{right:12px;left:12px;width:auto}
     .t-status{display:none}
+  }
+  @media (max-width:640px){
+    .media-block{overflow:hidden}
+    .table-scroll{overflow-x:auto}
+    .table-block table{min-width:36rem}
   }
 </style>
 </head>
@@ -434,6 +446,10 @@
       <button id="sizeDown" aria-label="Smaller text">A−</button>
       <button id="sizeUp" aria-label="Larger text">A+</button>
     </div>
+  </div>
+  <div class="set-row">
+    <label>Text width <span class="val" id="measureVal">34rem</span></label>
+    <input type="range" id="measure" min="26" max="56" step="2" value="34" aria-label="Text width" />
   </div>
   <div class="set-row toggle-line">
     <label style="margin:0">Dim other text while reading</label>
@@ -1514,6 +1530,23 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
   function applySize(){ root.style.setProperty("--read-size", readSize.toFixed(2)+"rem"); }
   $("sizeUp").addEventListener("click", ()=>{ readSize = Math.min(2.7, readSize+0.12); applySize(); });
   $("sizeDown").addEventListener("click", ()=>{ readSize = Math.max(1.05, readSize-0.12); applySize(); });
+  let readMeasure = normalizeMeasure(Number(localStorage.getItem("lumen.readMeasure")) || 34);
+  function normalizeMeasure(value){
+    if(!Number.isFinite(value)) return 34;
+    return Math.min(56, Math.max(26, Math.round(value / 2) * 2));
+  }
+  function applyMeasure(){
+    readMeasure = normalizeMeasure(readMeasure);
+    root.style.setProperty("--read-measure", readMeasure + "rem");
+    $("measure").value = readMeasure;
+    $("measureVal").textContent = readMeasure + "rem";
+  }
+  applyMeasure();
+  $("measure").addEventListener("input", e=>{
+    readMeasure = +e.target.value;
+    applyMeasure();
+    localStorage.setItem("lumen.readMeasure", String(readMeasure));
+  });
   const dimToggle = $("dimToggle");
   dimToggle.addEventListener("click", ()=>{
     dimOn = !dimOn;
