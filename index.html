@@ -548,9 +548,11 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
       cur = null;
     };
 
-    for(const line of lines){
-      const heading = parseHeading(line);
+    for(let i=0; i<lines.length; i++){
+      const line = lines[i];
+      const heading = readMergedHeading(lines, i, seenSection);
       if(heading){
+        i = heading.end;
         const titleText = cleanTitle(heading.text);
         if(heading.level === 1 && !seenSection){
           continue; // first H1 is usually the paper title, not a reading section
@@ -591,6 +593,36 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
     return secs;
   }
 
+  function readMergedHeading(lines, start, seenSection){
+    const first = parseHeading(lines[start]);
+    if(!first) return null;
+    const merged = {level:first.level, text:cleanTitle(first.text), end:start};
+
+    while(true){
+      const next = nextHeadingAcrossSoftBreak(lines, merged.end + 1);
+      if(!next) break;
+      if(!shouldMergeHeadingParts(merged.text, merged.level, next.heading.text, next.heading.level, seenSection)) break;
+      merged.text = cleanTitle(merged.text + " " + cleanTitle(next.heading.text));
+      merged.end = next.index;
+    }
+    return merged;
+  }
+
+  function nextHeadingAcrossSoftBreak(lines, start){
+    for(let i=start; i<lines.length; i++){
+      const line = lines[i];
+      if(isSoftHeadingGap(line)) continue;
+      const heading = parseHeading(line);
+      return heading ? {heading, index:i} : null;
+    }
+    return null;
+  }
+
+  function isSoftHeadingGap(line){
+    const text = String(line || "").trim();
+    return !text || /^[-*_]{3,}$/.test(text);
+  }
+
   function parseHeading(line){
     const m = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
     if(!m) return null;
@@ -606,6 +638,26 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
 
   function looksLikeByline(text){
     return /@|university|department|institute|research group|equal contribution|work performed/i.test(text);
+  }
+
+  function shouldMergeHeadingParts(currentText, currentLevel, nextText, nextLevel, seenSection){
+    const current = cleanTitle(currentText);
+    const next = cleanTitle(nextText);
+    if(!isSectionHeading(current, currentLevel, seenSection)) return false;
+    if(!isHeadingContinuationFragment(next, nextLevel)) return false;
+    if(NUMBERED_HEADING.test(next)) return false;
+    if(SECTION_HEADING.test(next) && !headingEndsOpen(current)) return false;
+    return headingEndsOpen(current) || NUMBERED_HEADING.test(current);
+  }
+
+  function isHeadingContinuationFragment(text, level){
+    if(!text || level > 4 || wordCount(text) > 6) return false;
+    if(looksLikeByline(text) || /[.!?;:]$/.test(text)) return false;
+    return /[A-Za-z]/.test(text);
+  }
+
+  function headingEndsOpen(text){
+    return /\b(and|or|of|for|to|with|from|in|on|the|a|an|by|as|into|and\/or)$/i.test(text.trim());
   }
 
   function isReferencesTitle(text){
