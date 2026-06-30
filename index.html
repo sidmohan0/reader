@@ -536,10 +536,11 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
     let cur = null;
     let seenSection = false;
     let inReferences = false;
+    let frontLines = [];
 
     const push = () => {
       if(!cur) return;
-      const blocks = markdownToBlocks(cur.lines.join("\n"), imageMap);
+      const blocks = [...(cur.prefixBlocks || []), ...markdownToBlocks(cur.lines.join("\n"), imageMap)];
       const fullText = spokenTextFromBlocks(blocks);
       if(fullText.length || blocks.length || cur.title){
         secs.push({ title:cur.title, kicker:cur.kicker, level:cur.level, blocks, fullText });
@@ -561,18 +562,22 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
           }
           push();
           const split = splitHeadingNumber(titleText);
+          const prefixBlocks = !seenSection ? frontMatterMediaBlocks(frontLines, imageMap) : [];
           cur = {
             title: split.title,
             kicker: split.kicker,
             level: split.level || Math.min(3, heading.level),
+            prefixBlocks,
             lines: [],
           };
           seenSection = true;
+          frontLines = [];
           inReferences = isReferencesTitle(split.title);
           continue;
         }
       }
       if(cur) cur.lines.push(line);
+      else frontLines.push(line);
     }
     push();
 
@@ -672,6 +677,19 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
     return blocks.filter(b=>b.type === "text").map(b=>b.text).join("\n\n").trim();
   }
 
+  function frontMatterMediaBlocks(lines, imageMap){
+    const images = [];
+    const captions = [];
+    lines.forEach(line=>{
+      const trimmed = line.trim();
+      const image = parseImageLine(trimmed, imageMap);
+      if(image) images.push(image);
+      const text = markdownLineToText(trimmed);
+      if(/^fig(ure)?\.?\s*\d*/i.test(text)) captions.push(text);
+    });
+    return images.map((image, i)=>({...image, caption:captions[i] || image.caption || ""}));
+  }
+
   function createImageMap(images){
     const map = new Map();
     if(!Array.isArray(images)) return map;
@@ -710,7 +728,7 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
   function collectCaption(lines, start, pattern){
     let i = start;
     while(i < lines.length && !lines[i].trim()) i++;
-    if(i >= lines.length || !pattern.test(lines[i].trim())) return {text:"", end:start - 1};
+    if(i >= lines.length || !pattern.test(markdownLineToText(lines[i]))) return {text:"", end:start - 1};
     const captionLines = [];
     for(; i<lines.length; i++){
       const line = lines[i].trim();
