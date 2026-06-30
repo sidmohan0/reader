@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="lamp" data-view="landing">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lumen — focus reader for papers</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2314110d'/%3E%3Ccircle cx='32' cy='32' r='12' fill='%23e8a84b'/%3E%3Cg stroke='%23e8a84b' stroke-width='5' stroke-linecap='round'%3E%3Cpath d='M32 8v8M32 48v8M8 32h8M48 32h8M15 15l6 6M43 43l6 6M49 15l-6 6M21 43l-6 6'/%3E%3C/g%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --font-read:"Newsreader",Georgia,'Iowan Old Style','Times New Roman',serif;
+    --font-ui:"Space Grotesk",ui-sans-serif,system-ui,-apple-system,sans-serif;
+    --read-size:1.6rem;
+    --read-measure:34rem;
+    --radius:14px;
+    --speed:.28s;
+  }
+  /* ---- lamp (dark) theme: a warm desk-lamp pool of light ---- */
+  [data-theme="lamp"]{
+    --bg:#14110d;
+    --bg-grad:radial-gradient(1100px 620px at 50% -8%, #221b12 0%, #14110d 60%);
+    --elev:#1d1812;
+    --elev-2:#241d15;
+    --hair:rgba(232,168,75,.16);
+    --hair-strong:rgba(232,168,75,.28);
+    --chrome:#cdbfa6;
+    --muted:#8c8170;
+    --faint:#6f6657;
+    --read-idle:#e6dcc8;
+    --read-past:#6c6353;
+    --read-future:#857b69;
+    --read-now:#fbf3e0;
+    --accent:#e8a84b;
+    --accent-soft:rgba(232,168,75,.18);
+    --accent-glow:rgba(232,168,75,.34);
+    --shadow:0 24px 60px -28px rgba(0,0,0,.8);
+    color-scheme:dark;
+  }
+  /* ---- paper (light) theme: warm reading room ---- */
+  [data-theme="paper"]{
+    --bg:#e9e1d2;
+    --bg-grad:radial-gradient(1100px 620px at 50% -8%, #f2ebdc 0%, #e3dac8 70%);
+    --elev:#f6f0e3;
+    --elev-2:#efe7d6;
+    --hair:rgba(120,90,40,.18);
+    --hair-strong:rgba(120,90,40,.32);
+    --chrome:#4a4030;
+    --muted:#7a6f59;
+    --faint:#a99c82;
+    --read-idle:#2c2620;
+    --read-past:#b3a991;
+    --read-future:#9a8f78;
+    --read-now:#171310;
+    --accent:#b3741f;
+    --accent-soft:rgba(179,116,31,.16);
+    --accent-glow:rgba(179,116,31,.30);
+    --shadow:0 22px 50px -30px rgba(60,40,10,.5);
+    color-scheme:light;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);background-image:var(--bg-grad);
+    color:var(--chrome);font-family:var(--font-ui);
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    transition:background-color var(--speed) ease,color var(--speed) ease;
+  }
+  button{font-family:var(--font-ui);cursor:pointer;border:none;background:none;color:inherit}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
+  ::selection{background:var(--accent-soft);color:var(--read-now)}
+
+  /* ============ top bar ============ */
+  .topbar{
+    position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;
+    padding:14px clamp(16px,4vw,34px);
+    border-bottom:1px solid transparent;
+    transition:border-color var(--speed),background-color var(--speed);
+  }
+  [data-view="reader"] .topbar{
+    border-color:var(--hair);
+    background:color-mix(in srgb, var(--bg) 78%, transparent);
+    backdrop-filter:blur(10px);
+  }
+  .wordmark{display:flex;align-items:center;gap:11px;font-weight:600;letter-spacing:.02em}
+  .glyph{width:26px;height:26px;flex:none}
+  .glyph .ray{stroke:var(--accent);stroke-width:1.7;stroke-linecap:round}
+  .glyph .core{fill:var(--accent)}
+  .wordmark b{font-weight:700;font-size:1.05rem;color:var(--chrome)}
+  .wordmark span{color:var(--muted);font-weight:400;font-size:.8rem;letter-spacing:.04em}
+  .top-spacer{flex:1}
+  .ghost-btn{
+    display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border-radius:999px;
+    border:1px solid var(--hair);color:var(--chrome);font-size:.83rem;font-weight:500;
+    transition:border-color var(--speed),background-color var(--speed),transform var(--speed);
+  }
+  .ghost-btn:hover{border-color:var(--hair-strong);background:var(--accent-soft)}
+  .ghost-btn:active{transform:translateY(1px)}
+  .ghost-btn svg{width:15px;height:15px}
+  #newSessionBtn[hidden]{display:none}
+
+  /* ============ landing ============ */
+  [data-view="reader"] #landing{display:none}
+  #landing{
+    min-height:calc(100vh - 64px);display:grid;place-items:center;
+    padding:24px clamp(16px,5vw,40px) 60px;
+  }
+  .hero{width:min(680px,100%);text-align:center}
+  .eyebrow{font-size:.78rem;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);font-weight:600}
+  .hero h1{
+    font-family:var(--font-read);font-weight:500;color:var(--read-idle);
+    font-size:clamp(2.2rem,6vw,3.5rem);line-height:1.06;margin:.45em 0 .35em;letter-spacing:-.01em;
+  }
+  .hero h1 em{font-style:italic;color:var(--accent)}
+  .hero p.lede{color:var(--muted);font-size:1.02rem;line-height:1.6;max-width:46ch;margin:0 auto 34px}
+  .drop{
+    position:relative;border:1.5px dashed var(--hair-strong);border-radius:22px;
+    background:color-mix(in srgb,var(--elev) 60%, transparent);
+    padding:48px 30px;transition:border-color var(--speed),background-color var(--speed),transform var(--speed);
+    cursor:pointer;
+  }
+  .drop:hover,.drop.drag{border-color:var(--accent);background:var(--accent-soft);transform:translateY(-2px)}
+  .drop .pdf-mark{
+    width:54px;height:54px;margin:0 auto 16px;border-radius:14px;display:grid;place-items:center;
+    background:var(--accent-soft);color:var(--accent);
+  }
+  .drop .pdf-mark svg{width:26px;height:26px}
+  .drop .big{color:var(--read-idle);font-size:1.12rem;font-weight:500}
+  .drop .small{color:var(--muted);font-size:.86rem;margin-top:6px}
+  .drop .browse{color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+  #fileInput{display:none}
+  .feat-row{display:flex;gap:22px;justify-content:center;margin-top:34px;flex-wrap:wrap}
+  .feat{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:.84rem}
+  .feat svg{width:16px;height:16px;color:var(--accent);flex:none}
+  .privacy{margin-top:30px;color:var(--faint);font-size:.78rem}
+
+  /* ============ reader layout ============ */
+  #reader{display:none}
+  [data-view="reader"] #reader{display:grid;grid-template-columns:300px 1fr;height:calc(100vh - 64px)}
+
+  /* ----- TOC sidebar ----- */
+  #toc{
+    border-right:1px solid var(--hair);overflow-y:auto;padding:18px 12px 120px;
+    background:color-mix(in srgb,var(--bg) 60%, var(--elev) 40%);
+  }
+  .toc-head{display:flex;align-items:baseline;justify-content:space-between;padding:4px 12px 12px}
+  .toc-head h2{margin:0;font-size:.74rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .toc-head .count{font-size:.72rem;color:var(--faint)}
+  .toc-item{
+    display:block;width:100%;text-align:left;padding:10px 12px;border-radius:10px;
+    color:var(--chrome);font-size:.9rem;line-height:1.35;border:1px solid transparent;
+    transition:background-color .16s,border-color .16s,color .16s;margin-bottom:1px;
+  }
+  .toc-item:hover{background:var(--accent-soft)}
+  .toc-item .num{color:var(--accent);font-weight:600;font-variant-numeric:tabular-nums;margin-right:8px}
+  .toc-item.lvl-2{padding-left:26px;font-size:.85rem;color:var(--muted)}
+  .toc-item.lvl-3{padding-left:40px;font-size:.82rem;color:var(--muted)}
+  .toc-item.active{background:var(--accent-soft);border-color:var(--hair-strong);color:var(--read-now)}
+  .toc-item.active .num{color:var(--accent)}
+
+  /* ----- reading stage ----- */
+  #stage{position:relative;overflow-y:auto;display:flex;flex-direction:column}
+  #progress{position:sticky;top:0;height:3px;z-index:5;background:transparent}
+  #progress .bar{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-glow));transition:width .25s}
+  .stage-inner{
+    flex:1;width:100%;max-width:calc(var(--read-measure) + 8rem);
+    margin:0 auto;padding:48px clamp(20px,5vw,64px) 200px;
+  }
+  #docMeta{color:var(--faint);font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px}
+  #sectionTitle{
+    font-family:var(--font-read);color:var(--read-idle);font-weight:600;
+    font-size:clamp(1.7rem,4vw,2.4rem);line-height:1.12;letter-spacing:-.01em;
+    margin:0 0 6px;max-width:var(--read-measure);
+  }
+  #sectionKicker{color:var(--accent);font-weight:600;font-size:.8rem;letter-spacing:.16em;text-transform:uppercase;margin-bottom:18px}
+  #sectionBody{
+    font-family:var(--font-read);font-size:var(--read-size);line-height:1.72;
+    max-width:var(--read-measure);color:var(--read-idle);font-weight:400;
+    transition:color var(--speed);
+  }
+  /* focus / spotlight effect during playback */
+  #sectionBody.playing{color:var(--read-future)}
+  #sectionBody .sentence{transition:color .2s,opacity .2s}
+  #sectionBody.playing .sentence.spoken{color:var(--read-past)}
+  #sectionBody.playing .sentence.now{color:var(--read-now)}
+  #sectionBody .sentence.now{
+    box-shadow:inset 0 -2px 0 0 var(--accent-glow);
+    border-radius:2px;
+  }
+  #sectionBody .word.speaking{
+    background:var(--accent-soft);
+    box-shadow:0 0 0 3px var(--accent-soft);
+    border-radius:4px;color:var(--read-now);
+  }
+  #sectionBody .sentence{cursor:pointer}
+  #sectionBody.playing.nodim,
+  #sectionBody.playing.nodim .sentence.spoken{color:var(--read-idle)}
+  .empty-note{
+    font-family:var(--font-ui);font-size:.95rem;color:var(--muted);line-height:1.6;
+    border:1px solid var(--hair);border-radius:12px;padding:18px 20px;background:var(--elev);
+  }
+  .empty-note b{color:var(--read-idle)}
+
+  /* ----- transport bar ----- */
+  #transport{
+    position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:30;
+    display:none;align-items:center;gap:6px;padding:8px 10px;border-radius:999px;
+    background:color-mix(in srgb,var(--elev) 88%, transparent);
+    border:1px solid var(--hair-strong);box-shadow:var(--shadow);
+    backdrop-filter:blur(14px);max-width:calc(100vw - 24px);
+  }
+  [data-view="reader"] #transport{display:flex}
+  .t-btn{
+    width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--chrome);
+    transition:background-color .16s,color .16s,transform .1s;
+  }
+  .t-btn:hover{background:var(--accent-soft);color:var(--read-now)}
+  .t-btn:active{transform:scale(.94)}
+  .t-btn svg{width:18px;height:18px}
+  .t-btn.play{width:50px;height:50px;background:var(--accent);color:#1a1206}
+  [data-theme="paper"] .t-btn.play{color:#fff}
+  .t-btn.play:hover{background:var(--accent);filter:brightness(1.06)}
+  .t-btn.play svg{width:22px;height:22px}
+  .t-div{width:1px;height:26px;background:var(--hair);margin:0 4px}
+  .t-status{font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums;padding:0 8px;white-space:nowrap}
+  .t-status b{color:var(--accent);font-weight:600}
+  .t-status .sel{color:var(--accent)}
+  .t-btn.gear[aria-expanded="true"]{background:var(--accent-soft);color:var(--read-now)}
+
+  /* settings popover */
+  #settings{
+    position:fixed;right:max(16px,calc(50vw - 320px));bottom:86px;z-index:31;width:280px;
+    background:var(--elev);border:1px solid var(--hair-strong);border-radius:16px;
+    box-shadow:var(--shadow);padding:16px;display:none;
+  }
+  #settings.open{display:block}
+  .set-row{margin-bottom:16px}
+  .set-row:last-child{margin-bottom:0}
+  .set-row label{display:block;font-size:.74rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;font-weight:600}
+  .set-row .val{float:right;color:var(--accent);text-transform:none;letter-spacing:0;font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--accent);height:4px}
+  select{
+    width:100%;padding:9px 11px;border-radius:10px;background:var(--elev-2);color:var(--chrome);
+    border:1px solid var(--hair);font-family:var(--font-ui);font-size:.86rem;
+  }
+  .size-ctl{display:flex;gap:8px}
+  .size-ctl button{flex:1;padding:9px;border-radius:10px;border:1px solid var(--hair);font-size:.95rem;color:var(--chrome);background:var(--elev-2)}
+  .size-ctl button:hover{border-color:var(--accent);background:var(--accent-soft)}
+  .toggle-line{display:flex;align-items:center;justify-content:space-between}
+  .switch{position:relative;width:42px;height:24px;border-radius:999px;background:var(--elev-2);border:1px solid var(--hair);flex:none;transition:background-color .2s}
+  .switch.on{background:var(--accent)}
+  .switch .knob{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--read-now);transition:transform .2s}
+  [data-theme="paper"] .switch .knob{background:#fff}
+  .switch.on .knob{transform:translateX(18px)}
+
+  /* loading overlay */
+  #loading{position:fixed;inset:0;z-index:60;display:none;place-items:center;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(6px)}
+  #loading.show{display:grid}
+  .load-card{text-align:center}
+  .lamp-spin{width:46px;height:46px;margin:0 auto 18px;position:relative}
+  .lamp-spin svg{width:100%;height:100%;animation:spin 1.4s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .load-card .lt{color:var(--read-idle);font-size:1.05rem;font-weight:500}
+  .load-card .ls{color:var(--muted);font-size:.84rem;margin-top:6px;font-variant-numeric:tabular-nums}
+
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none!important;animation:none!important}
+  }
+  @media (max-width:820px){
+    [data-view="reader"] #reader{grid-template-columns:1fr;height:auto;min-height:calc(100vh - 64px)}
+    #toc{border-right:none;border-bottom:1px solid var(--hair);max-height:38vh;padding-bottom:18px}
+    .stage-inner{padding-bottom:160px}
+    #settings{right:12px;left:12px;width:auto}
+    .t-status{display:none}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">
+    <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
+      <circle class="core" cx="12" cy="12" r="4.2"/>
+      <g class="ray">
+        <line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
+        <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
+        <line x1="5" y1="5" x2="7" y2="7"/><line x1="17" y1="17" x2="19" y2="19"/>
+        <line x1="19" y1="5" x2="17" y2="7"/><line x1="7" y1="17" x2="5" y2="19"/>
+      </g>
+    </svg>
+    <b>Lumen</b><span>focus reader</span>
+  </div>
+  <div class="top-spacer"></div>
+  <button class="ghost-btn" id="themeBtn" aria-label="Toggle theme">
+    <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>
+    <span id="themeLabel">Daylight</span>
+  </button>
+  <button class="ghost-btn" id="newSessionBtn" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+    New session
+  </button>
+</header>
+
+<!-- ===================== LANDING ===================== -->
+<section id="landing">
+  <div class="hero">
+    <div class="eyebrow">Read papers, not walls of text</div>
+    <h1>One section at a time, <em>read to you</em> if you like.</h1>
+    <p class="lede">Drop in an arXiv PDF. Lumen parses it into a clean contents list, then isolates each section in large, calm type — with a play button that reads it aloud, or just the part you highlight.</p>
+
+    <div class="drop" id="drop" role="button" tabindex="0" aria-label="Upload a PDF">
+      <div class="pdf-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6"/></svg>
+      </div>
+      <div class="big">Drop a PDF here</div>
+      <div class="small">or <span class="browse">browse your files</span> · arXiv papers work best</div>
+      <input type="file" id="fileInput" accept="application/pdf,.pdf" />
+    </div>
+
+    <div class="feat-row">
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h7"/></svg>Auto table of contents</div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14l9-7zM14 5l7 7-7 7z"/></svg>Read aloud, sentence by sentence</div>
+      <div class="feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>Magnified, distraction-free</div>
+    </div>
+    <p class="privacy">Your PDF never leaves your browser — LiteParse WASM parses it locally on this device.</p>
+  </div>
+</section>
+
+<!-- ===================== READER ===================== -->
+<section id="reader">
+  <aside id="toc" aria-label="Table of contents">
+    <div class="toc-head"><h2>Contents</h2><span class="count" id="tocCount"></span></div>
+    <div id="tocList"></div>
+  </aside>
+
+  <main id="stage" tabindex="-1">
+    <div id="progress"><div class="bar" id="progressBar"></div></div>
+    <div class="stage-inner">
+      <div id="docMeta"></div>
+      <div id="sectionKicker"></div>
+      <h1 id="sectionTitle"></h1>
+      <div id="sectionBody"></div>
+    </div>
+  </main>
+</section>
+
+<!-- transport -->
+<div id="transport" role="toolbar" aria-label="Playback controls">
+  <button class="t-btn" id="prevBtn" title="Previous section" aria-label="Previous section">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5 9 12l11 7z"/></svg>
+  </button>
+  <button class="t-btn" id="restartBtn" title="Restart from top" aria-label="Restart section">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 4v4h4"/></svg>
+  </button>
+  <button class="t-btn play" id="playBtn" title="Play (Space)" aria-label="Play">
+    <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+  </button>
+  <button class="t-btn" id="stopBtn" title="Stop" aria-label="Stop">
+    <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+  </button>
+  <button class="t-btn" id="nextBtn" title="Next section" aria-label="Next section">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5l11 7L4 19z"/></svg>
+  </button>
+  <div class="t-div"></div>
+  <div class="t-status" id="status">Ready</div>
+  <div class="t-div"></div>
+  <button class="t-btn gear" id="gearBtn" title="Settings" aria-label="Settings" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
+</div>
+
+<div id="settings" aria-label="Settings">
+  <div class="set-row">
+    <label>Voice</label>
+    <select id="voiceSel"></select>
+  </div>
+  <div class="set-row">
+    <label>Speed <span class="val" id="rateVal">1.0×</span></label>
+    <input type="range" id="rate" min="0.6" max="1.8" step="0.05" value="1" />
+  </div>
+  <div class="set-row">
+    <label>Text size</label>
+    <div class="size-ctl">
+      <button id="sizeDown" aria-label="Smaller text">A−</button>
+      <button id="sizeUp" aria-label="Larger text">A+</button>
+    </div>
+  </div>
+  <div class="set-row toggle-line">
+    <label style="margin:0">Dim other text while reading</label>
+    <button class="switch on" id="dimToggle" role="switch" aria-checked="true" aria-label="Dim other text"><span class="knob"></span></button>
+  </div>
+</div>
+
+<!-- loading -->
+<div id="loading">
+  <div class="load-card">
+    <div class="lamp-spin">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6 19 19M19 5l-1.4 1.4M6.4 17.6 5 19" opacity=".5"/></svg>
+    </div>
+    <div class="lt" id="loadTitle">Reading your paper…</div>
+    <div class="ls" id="loadSub">Extracting text</div>
+  </div>
+</div>
+
+<script type="module">
+import initLiteParse, { LiteParse } from "@llamaindex/liteparse-wasm";
+import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?url";
+
+(async function(){
+  "use strict";
+
+  const synth = window.speechSynthesis;
+  const $ = (id) => document.getElementById(id);
+  const root = document.documentElement;
+
+  // ---------- state ----------
+  let sections = [];          // [{title, kicker, level, fullText}]
+  let activeSection = -1;
+  let secSentences = [];      // [{text}]
+  let wordEls = [];           // wordEls[i] = [span,...]
+  let sentenceEls = [];
+  let queue = [], qi = 0, mode = "section";
+  let playing = false, paused = false, stopped = true;
+  let startSentence = 0;      // resume point within section
+  let rate = 1, voice = null;
+  let dimOn = true;
+  let liteParseReady = null;
+
+  // ====================================================
+  //  LITEPARSE PDF PARSING  →  SECTIONS
+  // ====================================================
+  const LITEPARSE_CONFIG = {
+    ocrEnabled: false,
+    outputFormat: "markdown",
+    imageMode: "off",
+    extractLinks: false,
+    quiet: true,
+  };
+  const SECTION_HEADING = /^(abstract|introduction|related works?|prior works?|background|preliminaries|notation|problem (statement|setup|formulation)|methods?|methodology|approach|model|architecture|materials and methods|experiments?|experimental (setup|results)|results|evaluation|analysis|ablations?|discussion|limitations?|conclusions?( and future work)?|future work|broader impact|impact statement|acknowledge?ments?|references|bibliography|appendix|appendices|supplementary( material)?)\b/i;
+  const NUMBERED_HEADING = /^((?:\d+|[A-Z])(?:\.\d+)*\.?)\s+(\S.*)$/;
+
+  function wordCount(s){ return s.trim().split(/\s+/).filter(Boolean).length; }
+
+  async function ensureLiteParse(){
+    if(!liteParseReady){
+      liteParseReady = initLiteParse({ module_or_path: liteparseWasmUrl });
+    }
+    return liteParseReady;
+  }
+
+  async function loadPdf(arrayBuffer, fileName){
+    showLoading("Reading your paper…", "Loading LiteParse");
+    try{
+      await ensureLiteParse();
+      const bytes = new Uint8Array(arrayBuffer);
+      const complexity = await inspectComplexity(bytes);
+
+      setLoadSub("Parsing sections with LiteParse");
+      await new Promise(r=>setTimeout(r,0));
+
+      const parser = new LiteParse(LITEPARSE_CONFIG);
+      const result = await parser.parse(bytes);
+      parser.free?.();
+
+      const markdown = String(result?.text || "").trim();
+      const plain = markdownToPlainText(markdown);
+      if(!plain || plain.length < 40){
+        throw new Error(ocrMessage(complexity));
+      }
+
+      const parsed = buildSections(markdown);
+      if(!parsed.length){
+        throw new Error("LiteParse opened the PDF, but did not find readable document text.");
+      }
+
+      const title = guessTitle(markdown) || cleanFileTitle(fileName) || "Document";
+      const total = Array.isArray(result?.pages) ? result.pages.length : complexity.length;
+      const warning = complexityWarning(complexity);
+      hideLoading();
+      presentDocument(parsed, title, total, warning);
+    }catch(err){
+      hideLoading();
+      console.error(err);
+      alert(err?.message || "Sorry — LiteParse could not read that PDF.");
+    }
+  }
+
+  async function inspectComplexity(bytes){
+    try{
+      const parser = new LiteParse({ ocrEnabled:false, quiet:true });
+      const pages = await parser.isComplex(bytes);
+      parser.free?.();
+      return Array.isArray(pages) ? pages : [];
+    }catch(err){
+      console.warn("LiteParse complexity check failed", err);
+      return [];
+    }
+  }
+
+  function buildSections(markdown){
+    const lines = markdown.replace(/\r\n?/g,"\n").split("\n");
+    const secs = [];
+    let cur = null;
+    let seenSection = false;
+    let inReferences = false;
+
+    const push = () => {
+      if(!cur) return;
+      const fullText = markdownToPlainText(cur.lines.join("\n"));
+      if(fullText.length || cur.title){
+        secs.push({ title:cur.title, kicker:cur.kicker, level:cur.level, fullText });
+      }
+      cur = null;
+    };
+
+    for(const line of lines){
+      const heading = parseHeading(line);
+      if(heading){
+        const titleText = cleanTitle(heading.text);
+        if(heading.level === 1 && !seenSection){
+          continue; // first H1 is usually the paper title, not a reading section
+        }
+        if(isSectionHeading(titleText, heading.level, seenSection)){
+          if(inReferences && !isAppendixTitle(titleText)){
+            if(cur) cur.lines.push(line);
+            continue;
+          }
+          push();
+          const split = splitHeadingNumber(titleText);
+          cur = {
+            title: split.title,
+            kicker: split.kicker,
+            level: split.level || Math.min(3, heading.level),
+            lines: [],
+          };
+          seenSection = true;
+          inReferences = isReferencesTitle(split.title);
+          continue;
+        }
+      }
+      if(cur) cur.lines.push(line);
+    }
+    push();
+
+    if(!secs.length){
+      const fullText = markdownToPlainText(markdown);
+      if(fullText.length > 40){
+        secs.push({ title:"Document", kicker:null, level:1, fullText });
+      }
+    }
+    return secs;
+  }
+
+  function parseHeading(line){
+    const m = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
+    if(!m) return null;
+    return { level:m[1].length, text:m[2] };
+  }
+
+  function isSectionHeading(text, level, seenSection){
+    if(!text || wordCount(text) > 16 || looksLikeByline(text)) return false;
+    if(SECTION_HEADING.test(text)) return true;
+    if(NUMBERED_HEADING.test(text)) return true;
+    return seenSection && level <= 3 && /[A-Za-z]/.test(text) && !/[.;:]$/.test(text);
+  }
+
+  function looksLikeByline(text){
+    return /@|university|department|institute|research group|equal contribution|work performed/i.test(text);
+  }
+
+  function isReferencesTitle(text){
+    return /^(references|bibliography)$/i.test(text.trim());
+  }
+
+  function isAppendixTitle(text){
+    return /^(appendix|appendices|supplementary( material)?|\w\.?\s+appendix)\b/i.test(text.trim());
+  }
+
+  function splitHeadingNumber(text){
+    const m = text.match(NUMBERED_HEADING);
+    if(!m) return { title:text, kicker:null, level:1 };
+    const kicker = m[1].replace(/\.$/,"");
+    return {
+      title: cleanTitle(m[2]),
+      kicker,
+      level: Math.min(3, kicker.split(".").length),
+    };
+  }
+
+  function markdownToPlainText(markdown){
+    if(!markdown) return "";
+    const lines = markdown
+      .replace(/\u00a0/g," ")
+      .replace(/```[\s\S]*?```/g," ")
+      .split(/\r?\n/)
+      .map(markdownLineToText);
+    return joinBody(lines);
+  }
+
+  function markdownLineToText(line){
+    let text = line.trim();
+    if(!text) return "";
+    if(/^[-*_]{3,}$/.test(text)) return "";
+    if(/^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(text)) return "";
+    text = text.replace(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/,"$1");
+    text = text.replace(/^>\s?/,"");
+    text = text.replace(/!\[([^\]]*)\]\([^)]+\)/g,"$1");
+    text = text.replace(/\[([^\]]+)\]\([^)]+\)/g,"$1");
+    text = text.replace(/[*_`~]/g,"");
+    if(/^\|.*\|$/.test(text)){
+      text = text.split("|").map(c=>c.trim()).filter(Boolean).join(" · ");
+    }
+    return text.replace(/\s+/g," ").trim();
+  }
+
+  // Join lines into readable paragraphs, fixing common end-of-line hyphenation.
+  function joinBody(arr){
+    const blocks = [];
+    let out = "";
+    const flush = () => {
+      const t = out.replace(/\s+/g," ").trim();
+      if(t) blocks.push(t);
+      out = "";
+    };
+    for(const raw of arr){
+      const line = String(raw || "").trim();
+      if(!line){ flush(); continue; }
+      if(!out){ out = line; continue; }
+      if(/[A-Za-z]-$/.test(out) && /^[a-z]/.test(line)){
+        out = out.slice(0,-1) + line;
+      }else{
+        out += " " + line;
+      }
+    }
+    flush();
+    return blocks.join("\n\n").trim();
+  }
+
+  function cleanTitle(t){ return t.replace(/\s+/g," ").trim(); }
+
+  function guessTitle(markdown){
+    const lines = markdown.replace(/\r\n?/g,"\n").split("\n");
+    for(const line of lines){
+      const heading = parseHeading(line);
+      if(heading?.level === 1){
+        const title = cleanTitle(markdownLineToText(heading.text));
+        if(title && !SECTION_HEADING.test(title)) return title;
+      }
+    }
+    return "";
+  }
+
+  function cleanFileTitle(name){
+    return String(name || "").replace(/\.pdf$/i,"").replace(/[-_]+/g," ").trim();
+  }
+
+  function ocrMessage(complexity){
+    const pages = complexity.filter(p=>p.needsOcr);
+    if(pages.length){
+      const reasons = [...new Set(pages.flatMap(p=>p.reasons || []))].join(", ");
+      return "LiteParse found little readable text. This looks like a scanned or OCR-heavy PDF" + (reasons ? ` (${reasons}).` : ".");
+    }
+    return "LiteParse opened the PDF, but did not find enough readable text.";
+  }
+
+  function complexityWarning(complexity){
+    if(!complexity.length) return "";
+    const textBlockingReasons = new Set(["scanned", "no-text", "garbled"]);
+    const flagged = complexity.filter(p=>{
+      const reasons = p.reasons || [];
+      return p.needsOcr && reasons.some(r=>textBlockingReasons.has(r));
+    });
+    if(!flagged.length) return "";
+    return `${flagged.length} page${flagged.length === 1 ? "" : "s"} may need OCR`;
+  }
+
+  // ====================================================
+  //  SENTENCE / WORD TOKENIZING
+  // ====================================================
+  const ABBR = /\b(?:[A-Za-z]|e\.g|i\.e|et al|etc|vs|cf|Fig|Eq|No|Sec|Ref|Dr|Mr|Mrs|Ms|Prof|St|al|approx)$/i;
+
+  function splitSentences(text){
+    const out = [];
+    let buf = "";
+    const tokens = text.split(/(\s+)/);
+    for(let i=0;i<tokens.length;i++){
+      buf += tokens[i];
+      const tok = tokens[i];
+      if(/[.!?]["')\]]?$/.test(tok)){
+        const next = tokens[i+2] || "";       // skip the whitespace token
+        const stem = tok.replace(/[.!?"')\]]+$/,"");
+        const looksAbbr = ABBR.test(stem) || /^\d+\.$/.test(tok) || /\d$/.test(stem);
+        const nextStartsUpper = /^[("'A-Z0-9]/.test(next);
+        if(!looksAbbr && nextStartsUpper){
+          const t = buf.trim(); if(t) out.push(t); buf = "";
+        }
+      }
+    }
+    const t = buf.trim(); if(t) out.push(t);
+    // merge stray tiny fragments
+    const merged = [];
+    for(const s of out){
+      if(merged.length && s.length < 3){ merged[merged.length-1] += " " + s; }
+      else merged.push(s);
+    }
+    return merged.length ? merged : [text.trim()];
+  }
+
+  function tokenizeWords(s){
+    const res = []; const re = /\S+/g; let m;
+    while((m = re.exec(s)) !== null){ res.push({text:m[0], start:m.index, end:m.index+m[0].length}); }
+    return res;
+  }
+
+  // ====================================================
+  //  RENDER SECTION
+  // ====================================================
+  function openSection(idx){
+    if(idx < 0 || idx >= sections.length) return;
+    stopPlayback();
+    activeSection = idx;
+    startSentence = 0;
+    const sec = sections[idx];
+
+    $("sectionKicker").textContent = sec.kicker ? "Section " + sec.kicker : "";
+    $("sectionTitle").textContent = sec.title || "Untitled section";
+
+    const body = $("sectionBody");
+    body.innerHTML = "";
+    body.classList.remove("playing");
+    secSentences = []; wordEls = []; sentenceEls = [];
+
+    if(!sec.fullText || sec.fullText.trim().length < 2){
+      const note = document.createElement("div");
+      note.className = "empty-note";
+      note.innerHTML = "<b>No body text here.</b> This looks like a heading with no extractable paragraph beneath it — try the next section.";
+      body.appendChild(note);
+    }else{
+      const sents = splitSentences(sec.fullText);
+      sents.forEach((s, i) => {
+        secSentences.push({text:s});
+        const span = document.createElement("span");
+        span.className = "sentence"; span.dataset.i = i;
+        span.addEventListener("click", () => seekToSentence(i));
+        const words = tokenizeWords(s);
+        wordEls[i] = [];
+        let cursor = 0;
+        words.forEach(w => {
+          if(w.start > cursor) span.appendChild(document.createTextNode(s.slice(cursor, w.start)));
+          const ws = document.createElement("span");
+          ws.className = "word"; ws.textContent = w.text;
+          ws.dataset.s = w.start; ws.dataset.e = w.end;
+          span.appendChild(ws); wordEls[i].push(ws);
+          cursor = w.end;
+        });
+        if(cursor < s.length) span.appendChild(document.createTextNode(s.slice(cursor)));
+        span.appendChild(document.createTextNode(" "));
+        body.appendChild(span);
+        sentenceEls.push(span);
+      });
+    }
+
+    // TOC active state
+    document.querySelectorAll(".toc-item").forEach(el=>{
+      el.classList.toggle("active", +el.dataset.i === idx);
+    });
+    const stage = $("stage"); stage.scrollTop = 0;
+    setProgress(0);
+    setStatus();
+  }
+
+  // ====================================================
+  //  SPEECH ENGINE
+  // ====================================================
+  function clearHighlights(){
+    sentenceEls.forEach(el=>el.classList.remove("now","spoken"));
+    wordEls.forEach(arr=>arr.forEach(w=>w.classList.remove("speaking")));
+  }
+
+  function highlightSentence(i){
+    sentenceEls.forEach((el, k)=>{
+      el.classList.toggle("now", k === i);
+      if(k < i) el.classList.add("spoken"); else if(k > i) el.classList.remove("spoken");
+    });
+    const el = sentenceEls[i];
+    if(el){
+      const stage = $("stage");
+      const r = el.getBoundingClientRect();
+      const sr = stage.getBoundingClientRect();
+      if(r.top < sr.top + 120 || r.bottom > sr.bottom - 220){
+        stage.scrollTo({ top: stage.scrollTop + (r.top - sr.top) - sr.height*0.34, behavior:"smooth" });
+      }
+    }
+    setProgress((i) / Math.max(1, secSentences.length));
+    setStatus();
+  }
+
+  function boundaryFor(sentIdx){
+    return function(ev){
+      if(ev.name && ev.name !== "word") return;
+      const words = wordEls[sentIdx]; if(!words) return;
+      const idx = ev.charIndex;
+      let target = null;
+      for(const w of words){
+        const s = +w.dataset.s, e = +w.dataset.e;
+        if(idx >= s && idx < e){ target = w; break; }
+        if(s > idx){ target = w; break; }
+      }
+      words.forEach(w=>w.classList.remove("speaking"));
+      if(target) target.classList.add("speaking");
+    };
+  }
+
+  function startQueue(list, m){
+    synth.cancel();
+    queue = list; qi = 0; mode = m;
+    stopped = false; paused = false; playing = true;
+    if(m === "section") $("sectionBody").classList.add("playing");
+    updatePlayIcon(); setStatus();
+    speakNext();
+  }
+
+  function speakNext(){
+    if(stopped) return;
+    if(qi >= queue.length){ finishPlayback(); return; }
+    const item = queue[qi];
+    if(mode === "section") highlightSentence(item.idx);
+    const u = new SpeechSynthesisUtterance(item.text);
+    u.rate = rate; u.pitch = 1;
+    if(voice) u.voice = voice;
+    if(mode === "section") u.onboundary = boundaryFor(item.idx);
+    u.onend = () => {
+      if(stopped) return;
+      if(mode === "section" && sentenceEls[item.idx]){
+        sentenceEls[item.idx].classList.add("spoken");
+        wordEls[item.idx]?.forEach(w=>w.classList.remove("speaking"));
+      }
+      qi++; speakNext();
+    };
+    u.onerror = () => { if(stopped) return; qi++; speakNext(); };
+    synth.speak(u);
+  }
+
+  function finishPlayback(){
+    playing = false; paused = false; stopped = true;
+    $("sectionBody").classList.remove("playing");
+    clearHighlights();
+    if(mode === "section"){ startSentence = 0; setProgress(1); }
+    updatePlayIcon(); setStatus();
+  }
+
+  function stopPlayback(){
+    stopped = true; playing = false; paused = false;
+    synth.cancel();
+    $("sectionBody").classList.remove("playing");
+    clearHighlights();
+    updatePlayIcon();
+  }
+
+  // ---- selection awareness ----
+  function bodySelectionText(){
+    const sel = window.getSelection();
+    if(!sel || sel.isCollapsed) return "";
+    const body = $("sectionBody");
+    if(!sel.anchorNode || !body.contains(sel.anchorNode)) return "";
+    const t = sel.toString().trim();
+    return t.length > 1 ? t : "";
+  }
+
+  // ---- play button ----
+  function onPlayToggle(){
+    if(paused){ synth.resume(); paused = false; playing = true; updatePlayIcon(); setStatus(); return; }
+    if(playing){ synth.pause(); paused = true; playing = false; updatePlayIcon(); setStatus(); return; }
+    // not currently playing → start
+    const sel = bodySelectionText();
+    if(sel){
+      const list = splitSentences(sel).map(t=>({text:t}));
+      startQueue(list, "selection");
+    }else{
+      if(!secSentences.length) return;
+      const list = secSentences.map((s,i)=>({text:s.text, idx:i})).slice(startSentence);
+      if(!list.length){ startSentence = 0; }
+      startQueue(secSentences.map((s,i)=>({text:s.text, idx:i})).slice(startSentence), "section");
+    }
+  }
+
+  function seekToSentence(i){
+    startSentence = i;
+    if(playing || paused){
+      const list = secSentences.map((s,k)=>({text:s.text, idx:k})).slice(i);
+      startQueue(list, "section");
+    }else{
+      clearHighlights();
+      highlightSentence(i);
+      sentenceEls.forEach((el,k)=>{ if(k<i) el.classList.add("spoken"); else el.classList.remove("spoken"); });
+    }
+  }
+
+  // ====================================================
+  //  UI WIRING
+  // ====================================================
+  function updatePlayIcon(){
+    const playing_ = playing && !paused;
+    $("playIcon").innerHTML = playing_
+      ? '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>'
+      : '<path d="M8 5v14l11-7z"/>';
+    $("playBtn").setAttribute("aria-label", playing_ ? "Pause" : "Play");
+  }
+
+  function setProgress(frac){
+    $("progressBar").style.width = Math.max(0,Math.min(1,frac))*100 + "%";
+  }
+
+  function setStatus(){
+    const st = $("status");
+    if(mode === "selection" && (playing||paused)){
+      st.innerHTML = '<span class="sel">Reading selection…</span>'; return;
+    }
+    if(!secSentences.length){ st.textContent = "Ready"; return; }
+    const cur = (playing||paused) ? (queue[qi]?.idx ?? startSentence) : startSentence;
+    const sel = bodySelectionText();
+    if(sel && !playing && !paused){
+      st.innerHTML = 'Press play to read <span class="sel">selection</span>';
+    }else{
+      st.innerHTML = '<b>'+(Math.min(cur+1, secSentences.length))+'</b> / '+secSentences.length+' sentences';
+    }
+  }
+
+  function buildToc(){
+    const list = $("tocList"); list.innerHTML = "";
+    sections.forEach((s, i)=>{
+      const b = document.createElement("button");
+      b.className = "toc-item lvl-" + Math.min(3, s.level);
+      b.dataset.i = i;
+      const num = s.kicker ? '<span class="num">'+s.kicker+'</span>' : '';
+      b.innerHTML = num + escapeHtml(s.title || "Untitled");
+      b.addEventListener("click", ()=>openSection(i));
+      list.appendChild(b);
+    });
+    $("tocCount").textContent = sections.length + " sections";
+  }
+
+  function escapeHtml(s){ return s.replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+  function presentDocument(secs, title, pages, warning){
+    sections = secs;
+    if(!sections.length){
+      alert("LiteParse did not extract any readable sections from this PDF.");
+      return;
+    }
+    const pageLabel = pages ? pages + " page" + (pages === 1 ? "" : "s") : "LiteParse";
+    $("docMeta").textContent = (title ? title.slice(0,120) : "Document") + "  ·  " + pageLabel + (warning ? "  ·  " + warning : "");
+    buildToc();
+    root.setAttribute("data-view","reader");
+    $("newSessionBtn").hidden = false;
+    openSection(0);
+  }
+
+  // ---------- voices ----------
+  function loadVoices(){
+    const voices = synth.getVoices();
+    const sel = $("voiceSel");
+    if(!voices.length) return;
+    sel.innerHTML = "";
+    const en = voices.filter(v=>/^en/i.test(v.lang));
+    const list = en.length ? en.concat(voices.filter(v=>!/^en/i.test(v.lang))) : voices;
+    list.forEach((v, i)=>{
+      const o = document.createElement("option");
+      o.value = voices.indexOf(v);
+      o.textContent = v.name + " — " + v.lang;
+      sel.appendChild(o);
+    });
+    // pick a nice default
+    const prefer = en.find(v=>/natural|google|samantha|aria|jenny|daniel/i.test(v.name)) || en[0] || voices[0];
+    voice = prefer;
+    sel.value = voices.indexOf(prefer);
+    sel.onchange = () => { voice = synth.getVoices()[+sel.value] || null; };
+  }
+  synth.addEventListener && synth.addEventListener("voiceschanged", loadVoices);
+  loadVoices();
+
+  // ---------- file handling ----------
+  function handleFile(file){
+    if(!file) return;
+    if(file.type && file.type.indexOf("pdf") === -1 && !/\.pdf$/i.test(file.name)){
+      alert("Please choose a PDF file."); return;
+    }
+    const reader = new FileReader();
+    reader.onload = e => loadPdf(e.target.result, file.name);
+    reader.onerror = () => alert("Could not read that file.");
+    reader.readAsArrayBuffer(file);
+  }
+
+  const drop = $("drop"), fileInput = $("fileInput");
+  drop.addEventListener("click", ()=>fileInput.click());
+  drop.addEventListener("keydown", e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); fileInput.click(); }});
+  fileInput.addEventListener("change", e=>handleFile(e.target.files[0]));
+  ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.add("drag"); }));
+  ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.remove("drag"); }));
+  drop.addEventListener("drop", e=>{ const f = e.dataTransfer.files[0]; handleFile(f); });
+  // allow dropping anywhere on landing
+  window.addEventListener("dragover", e=>{ if(root.getAttribute("data-view")==="landing") e.preventDefault(); });
+  window.addEventListener("drop", e=>{ if(root.getAttribute("data-view")==="landing"){ e.preventDefault(); handleFile(e.dataTransfer.files[0]); }});
+
+  // ---------- loading overlay ----------
+  function showLoading(t, s){ $("loadTitle").textContent=t; $("loadSub").textContent=s||""; $("loading").classList.add("show"); }
+  function setLoadSub(s){ $("loadSub").textContent = s; }
+  function hideLoading(){ $("loading").classList.remove("show"); }
+
+  // ---------- transport buttons ----------
+  $("playBtn").addEventListener("click", onPlayToggle);
+  $("stopBtn").addEventListener("click", ()=>{ stopPlayback(); startSentence = 0; clearHighlights(); setProgress(0); setStatus(); });
+  $("restartBtn").addEventListener("click", ()=>{ startSentence = 0; const list = secSentences.map((s,i)=>({text:s.text, idx:i})); if(list.length) startQueue(list, "section"); });
+  $("prevBtn").addEventListener("click", ()=>openSection(activeSection-1));
+  $("nextBtn").addEventListener("click", ()=>openSection(activeSection+1));
+
+  // ---------- settings ----------
+  const settings = $("settings"), gearBtn = $("gearBtn");
+  gearBtn.addEventListener("click", ()=>{
+    const open = settings.classList.toggle("open");
+    gearBtn.setAttribute("aria-expanded", open ? "true":"false");
+  });
+  document.addEventListener("click", e=>{
+    if(settings.classList.contains("open") && !settings.contains(e.target) && e.target !== gearBtn && !gearBtn.contains(e.target)){
+      settings.classList.remove("open"); gearBtn.setAttribute("aria-expanded","false");
+    }
+  });
+  $("rate").addEventListener("input", e=>{ rate = +e.target.value; $("rateVal").textContent = rate.toFixed(2).replace(/0$/,"")+"×"; });
+  let readSize = 1.6;
+  function applySize(){ root.style.setProperty("--read-size", readSize.toFixed(2)+"rem"); }
+  $("sizeUp").addEventListener("click", ()=>{ readSize = Math.min(2.7, readSize+0.12); applySize(); });
+  $("sizeDown").addEventListener("click", ()=>{ readSize = Math.max(1.05, readSize-0.12); applySize(); });
+  const dimToggle = $("dimToggle");
+  dimToggle.addEventListener("click", ()=>{
+    dimOn = !dimOn;
+    dimToggle.classList.toggle("on", dimOn);
+    dimToggle.setAttribute("aria-checked", dimOn?"true":"false");
+    $("sectionBody").classList.toggle("nodim", !dimOn);
+  });
+
+  // ---------- theme ----------
+  function setTheme(t){
+    root.setAttribute("data-theme", t);
+    $("themeLabel").textContent = t === "lamp" ? "Daylight" : "Lamplight";
+    $("themeIcon").innerHTML = t === "lamp"
+      ? '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/>'
+      : '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';
+  }
+  $("themeBtn").addEventListener("click", ()=>{
+    setTheme(root.getAttribute("data-theme") === "lamp" ? "paper" : "lamp");
+  });
+
+  // ---------- new session ----------
+  $("newSessionBtn").addEventListener("click", ()=>{
+    stopPlayback();
+    sections = []; activeSection = -1; secSentences = []; wordEls = []; sentenceEls = [];
+    startSentence = 0; setProgress(0);
+    $("sectionBody").innerHTML=""; $("sectionTitle").textContent=""; $("sectionKicker").textContent="";
+    $("tocList").innerHTML=""; fileInput.value="";
+    $("newSessionBtn").hidden = true;
+    root.setAttribute("data-view","landing");
+    window.scrollTo(0,0);
+  });
+
+  // ---------- selection → update status / play label ----------
+  document.addEventListener("selectionchange", ()=>{
+    if(root.getAttribute("data-view")==="reader" && !playing && !paused) setStatus();
+  });
+
+  // ---------- keyboard ----------
+  document.addEventListener("keydown", e=>{
+    if(root.getAttribute("data-view")!=="reader") return;
+    const tag = (e.target.tagName||"").toLowerCase();
+    if(tag === "input" || tag === "select" || tag === "textarea") return;
+    if(e.key === " "){ e.preventDefault(); onPlayToggle(); }
+    else if(e.key === "Escape"){ stopPlayback(); startSentence=0; setProgress(0); setStatus(); }
+    else if(e.key === "[") openSection(activeSection-1);
+    else if(e.key === "]") openSection(activeSection+1);
+    else if(e.key === "+"||e.key === "="){ readSize=Math.min(2.7,readSize+0.12); applySize(); }
+    else if(e.key === "-"){ readSize=Math.max(1.05,readSize-0.12); applySize(); }
+  });
+
+  // safari/chrome can leave synth in a paused state on reload
+  window.addEventListener("beforeunload", ()=>synth.cancel());
+  applySize();
+})();
+</script>
+</body>
+</html>
