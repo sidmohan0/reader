@@ -273,6 +273,19 @@
     width:100%;padding:9px 11px;border-radius:10px;background:var(--elev-2);color:var(--chrome);
     border:1px solid var(--hair);font-family:var(--font-ui);font-size:.86rem;
   }
+  .voice-actions{display:flex;gap:8px;margin-top:8px}
+  .voice-actions button,
+  .advanced-voice summary{
+    padding:8px 10px;border-radius:10px;border:1px solid var(--hair);
+    background:var(--elev-2);color:var(--chrome);font-size:.82rem;font-weight:500;
+  }
+  .voice-actions button:hover,
+  .advanced-voice summary:hover{border-color:var(--accent);background:var(--accent-soft)}
+  .voice-actions button{flex:1}
+  .advanced-voice{margin-top:10px}
+  .advanced-voice summary{list-style:none;cursor:pointer;text-align:center}
+  .advanced-voice summary::-webkit-details-marker{display:none}
+  .advanced-voice select{margin-top:8px}
   .size-ctl{display:flex;gap:8px}
   .size-ctl button{flex:1;padding:9px;border-radius:10px;border:1px solid var(--hair);font-size:.95rem;color:var(--chrome);background:var(--elev-2)}
   .size-ctl button:hover{border-color:var(--accent);background:var(--accent-soft)}
@@ -401,8 +414,15 @@
 
 <div id="settings" aria-label="Settings">
   <div class="set-row">
-    <label>Voice</label>
-    <select id="voiceSel"></select>
+    <label>Voice profile</label>
+    <select id="voiceProfileSel"></select>
+    <div class="voice-actions">
+      <button id="previewVoiceBtn">Preview</button>
+    </div>
+    <details class="advanced-voice">
+      <summary>Browser voice</summary>
+      <select id="voiceSel"></select>
+    </details>
   </div>
   <div class="set-row">
     <label>Speed <span class="val" id="rateVal">1.0×</span></label>
@@ -452,10 +472,12 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
   let queue = [], qi = 0, mode = "section";
   let playing = false, paused = false, stopped = true;
   let startSentence = 0;      // resume point within section
-  let rate = 1, voice = null;
+  let rate = 1, pitch = 1, voice = null;
   let dimOn = true;
   let liteParseReady = null;
   let imageObjectUrls = [];
+  let voiceProfileId = localStorage.getItem("lumen.voiceProfile") || "best";
+  let voiceOverrideUri = localStorage.getItem("lumen.voiceUri") || "";
 
   // ====================================================
   //  LITEPARSE PDF PARSING  →  SECTIONS
@@ -469,6 +491,48 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
   };
   const SECTION_HEADING = /^(abstract|introduction|related works?|prior works?|background|preliminaries|notation|problem (statement|setup|formulation)|methods?|methodology|approach|model|architecture|materials and methods|experiments?|experimental (setup|results)|results|evaluation|analysis|ablations?|discussion|limitations?|conclusions?( and future work)?|future work|broader impact|impact statement|acknowledge?ments?|references|bibliography|appendix|appendices|supplementary( material)?)\b/i;
   const NUMBERED_HEADING = /^((?:\d+|[A-Z])(?:\.\d+)*\.?)\s+(\S.*)$/;
+  const VOICE_PROFILES = [
+    {
+      id:"best",
+      name:"Best available",
+      rate:1,
+      pitch:1,
+      prefer:/premium|enhanced|natural|neural|aria|jenny|guy|samantha|ava|daniel|serena|google uk english|google us english/i,
+      avoid:/compact|novelty|whisper|bells|boing|bubbles|cellos|zarvox/i,
+    },
+    {
+      id:"calm",
+      name:"Calm reader",
+      rate:.9,
+      pitch:.95,
+      prefer:/ava|samantha|serena|daniel|alex|oliver|thomas|moira|karen|google uk english female/i,
+      avoid:/compact|novelty|whisper|zarvox|trinoids/i,
+    },
+    {
+      id:"crisp",
+      name:"Crisp academic",
+      rate:1.05,
+      pitch:1,
+      prefer:/aria|jenny|samantha|daniel|google us english|google uk english|microsoft/i,
+      avoid:/compact|novelty|whisper|zarvox/i,
+    },
+    {
+      id:"low-fatigue",
+      name:"Lower fatigue",
+      rate:.85,
+      pitch:.9,
+      prefer:/ava|serena|samantha|daniel|alex|moira|karen|rishi|google uk english/i,
+      avoid:/compact|novelty|whisper|zarvox|bubbles/i,
+    },
+    {
+      id:"fast-skim",
+      name:"Fast skim",
+      rate:1.2,
+      pitch:1,
+      prefer:/premium|enhanced|natural|neural|aria|jenny|samantha|google us english|google uk english/i,
+      avoid:/compact|novelty|whisper|zarvox/i,
+    },
+  ];
 
   function wordCount(s){ return s.trim().split(/\s+/).filter(Boolean).length; }
 
@@ -1137,7 +1201,7 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
     const item = queue[qi];
     if(mode === "section") highlightSentence(item.idx);
     const u = new SpeechSynthesisUtterance(item.text);
-    u.rate = rate; u.pitch = 1;
+    u.rate = rate; u.pitch = pitch;
     if(voice) u.voice = voice;
     if(mode === "section") u.onboundary = boundaryFor(item.idx);
     u.onend = () => {
@@ -1287,27 +1351,117 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
   }
 
   // ---------- voices ----------
-  function loadVoices(){
-    const voices = synth.getVoices();
-    const sel = $("voiceSel");
-    if(!voices.length) return;
+  function setupVoiceProfiles(){
+    const sel = $("voiceProfileSel");
     sel.innerHTML = "";
-    const en = voices.filter(v=>/^en/i.test(v.lang));
-    const list = en.length ? en.concat(voices.filter(v=>!/^en/i.test(v.lang))) : voices;
-    list.forEach((v, i)=>{
+    VOICE_PROFILES.forEach(profile=>{
       const o = document.createElement("option");
-      o.value = voices.indexOf(v);
-      o.textContent = v.name + " — " + v.lang;
+      o.value = profile.id;
+      o.textContent = profile.name;
       sel.appendChild(o);
     });
-    // pick a nice default
-    const prefer = en.find(v=>/natural|google|samantha|aria|jenny|daniel/i.test(v.name)) || en[0] || voices[0];
-    voice = prefer;
-    sel.value = voices.indexOf(prefer);
-    sel.onchange = () => { voice = synth.getVoices()[+sel.value] || null; };
+    if(!VOICE_PROFILES.some(p=>p.id === voiceProfileId)) voiceProfileId = "best";
+    sel.value = voiceProfileId;
+    applyVoiceProfileDefaults();
+    sel.addEventListener("change", ()=>{
+      voiceProfileId = sel.value;
+      voiceOverrideUri = "";
+      localStorage.setItem("lumen.voiceProfile", voiceProfileId);
+      localStorage.removeItem("lumen.voiceUri");
+      applyVoiceProfileDefaults();
+      chooseProfileVoice();
+    });
+  }
+
+  function loadVoices(){
+    const voices = synth.getVoices();
+    const voiceSel = $("voiceSel");
+    if(!voices.length) return;
+    voiceSel.innerHTML = "";
+    sortedVoices(voices).forEach(v=>{
+      const o = document.createElement("option");
+      o.value = voiceKey(v);
+      o.textContent = v.name + " — " + v.lang + (v.localService ? " · local" : "");
+      voiceSel.appendChild(o);
+    });
+    chooseProfileVoice();
   }
   synth.addEventListener && synth.addEventListener("voiceschanged", loadVoices);
+  setupVoiceProfiles();
   loadVoices();
+
+  function sortedVoices(voices){
+    return [...voices].sort((a,b)=>{
+      const ae = /^en/i.test(a.lang), be = /^en/i.test(b.lang);
+      if(ae !== be) return ae ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  function currentProfile(){
+    return VOICE_PROFILES.find(p=>p.id === voiceProfileId) || VOICE_PROFILES[0];
+  }
+
+  function applyVoiceProfileDefaults(){
+    const profile = currentProfile();
+    rate = profile.rate;
+    pitch = profile.pitch;
+    $("rate").value = rate;
+    $("rateVal").textContent = rate.toFixed(2).replace(/0$/,"")+"×";
+  }
+
+  function chooseProfileVoice(){
+    const voices = synth.getVoices();
+    if(!voices.length) return;
+    const override = voiceOverrideUri ? voices.find(v=>voiceKey(v) === voiceOverrideUri) : null;
+    voice = override || bestVoiceForProfile(voices, currentProfile());
+    if(voice){
+      $("voiceSel").value = voiceKey(voice);
+    }
+  }
+
+  function bestVoiceForProfile(voices, profile){
+    const en = voices.filter(v=>/^en/i.test(v.lang));
+    const candidates = en.length ? en : voices;
+    return candidates
+      .map(v=>({voice:v, score:voiceScore(v, profile)}))
+      .sort((a,b)=>b.score-a.score)[0]?.voice || voices[0];
+  }
+
+  function voiceScore(v, profile){
+    const name = `${v.name} ${v.lang} ${v.voiceURI}`;
+    let score = 0;
+    if(/^en-US/i.test(v.lang)) score += 12;
+    else if(/^en-GB/i.test(v.lang)) score += 10;
+    else if(/^en/i.test(v.lang)) score += 8;
+    if(v.localService) score += 3;
+    if(profile.prefer.test(name)) score += 20;
+    if(/premium|enhanced|natural|neural/i.test(name)) score += 8;
+    if(/google|microsoft|apple/i.test(name)) score += 4;
+    if(profile.avoid.test(name)) score -= 40;
+    if(/compact/i.test(name)) score -= 12;
+    return score;
+  }
+
+  function voiceKey(v){
+    return v.voiceURI || `${v.name}::${v.lang}`;
+  }
+
+  $("voiceSel").addEventListener("change", e=>{
+    voiceOverrideUri = e.target.value;
+    localStorage.setItem("lumen.voiceUri", voiceOverrideUri);
+    chooseProfileVoice();
+  });
+
+  $("previewVoiceBtn").addEventListener("click", ()=>{
+    const text = "This is Lumen reading a research paper section with the selected voice profile.";
+    stopPlayback();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = rate;
+    u.pitch = pitch;
+    if(voice) u.voice = voice;
+    synth.speak(u);
+  });
 
   // ---------- file handling ----------
   function handleFile(file){
