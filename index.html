@@ -197,6 +197,34 @@
   #sectionBody .sentence{cursor:pointer}
   #sectionBody.playing.nodim,
   #sectionBody.playing.nodim .sentence.spoken{color:var(--read-idle)}
+  .text-block{margin:0 0 1.2rem}
+  .media-block{
+    font-family:var(--font-ui);font-size:.86rem;line-height:1.45;color:var(--chrome);
+    margin:1.6rem 0;padding:14px 16px;border:1px solid var(--hair);
+    border-radius:12px;background:color-mix(in srgb,var(--elev) 72%, transparent);
+    overflow:hidden;
+  }
+  .media-block .media-label{
+    display:block;margin-bottom:10px;color:var(--accent);font-size:.72rem;
+    letter-spacing:.16em;text-transform:uppercase;font-weight:700;
+  }
+  .figure-block img{
+    display:block;max-width:100%;height:auto;margin:0 auto;border-radius:8px;
+    background:color-mix(in srgb,var(--bg) 70%, #fff 30%);
+  }
+  .figure-block .missing-image{
+    padding:22px;text-align:center;border:1px dashed var(--hair-strong);
+    border-radius:8px;color:var(--muted);
+  }
+  .media-caption{margin-top:10px;color:var(--muted)}
+  .table-scroll{overflow-x:auto}
+  .table-block table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  .table-block th,.table-block td{
+    padding:8px 10px;border-bottom:1px solid var(--hair);
+    text-align:left;vertical-align:top;white-space:normal;
+  }
+  .table-block th{color:var(--read-idle);font-weight:600;background:var(--accent-soft)}
+  .table-block tr:last-child td{border-bottom:none}
   .empty-note{
     font-family:var(--font-ui);font-size:.95rem;color:var(--muted);line-height:1.6;
     border:1px solid var(--hair);border-radius:12px;padding:18px 20px;background:var(--elev);
@@ -416,7 +444,7 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
   const root = document.documentElement;
 
   // ---------- state ----------
-  let sections = [];          // [{title, kicker, level, fullText}]
+  let sections = [];          // [{title, kicker, level, blocks, fullText}]
   let activeSection = -1;
   let secSentences = [];      // [{text}]
   let wordEls = [];           // wordEls[i] = [span,...]
@@ -427,6 +455,7 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
   let rate = 1, voice = null;
   let dimOn = true;
   let liteParseReady = null;
+  let imageObjectUrls = [];
 
   // ====================================================
   //  LITEPARSE PDF PARSING  →  SECTIONS
@@ -434,7 +463,7 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
   const LITEPARSE_CONFIG = {
     ocrEnabled: false,
     outputFormat: "markdown",
-    imageMode: "off",
+    imageMode: "embed",
     extractLinks: false,
     quiet: true,
   };
@@ -464,13 +493,15 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
       const result = await parser.parse(bytes);
       parser.free?.();
 
+      releaseImageUrls();
+      const imageMap = createImageMap(result?.images);
       const markdown = String(result?.text || "").trim();
       const plain = markdownToPlainText(markdown);
       if(!plain || plain.length < 40){
         throw new Error(ocrMessage(complexity));
       }
 
-      const parsed = buildSections(markdown);
+      const parsed = buildSections(markdown, imageMap);
       if(!parsed.length){
         throw new Error("LiteParse opened the PDF, but did not find readable document text.");
       }
@@ -499,7 +530,7 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
     }
   }
 
-  function buildSections(markdown){
+  function buildSections(markdown, imageMap = new Map()){
     const lines = markdown.replace(/\r\n?/g,"\n").split("\n");
     const secs = [];
     let cur = null;
@@ -508,9 +539,10 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
 
     const push = () => {
       if(!cur) return;
-      const fullText = markdownToPlainText(cur.lines.join("\n"));
-      if(fullText.length || cur.title){
-        secs.push({ title:cur.title, kicker:cur.kicker, level:cur.level, fullText });
+      const blocks = markdownToBlocks(cur.lines.join("\n"), imageMap);
+      const fullText = spokenTextFromBlocks(blocks);
+      if(fullText.length || blocks.length || cur.title){
+        secs.push({ title:cur.title, kicker:cur.kicker, level:cur.level, blocks, fullText });
       }
       cur = null;
     };
@@ -545,9 +577,10 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
     push();
 
     if(!secs.length){
-      const fullText = markdownToPlainText(markdown);
+      const blocks = markdownToBlocks(markdown, imageMap);
+      const fullText = spokenTextFromBlocks(blocks);
       if(fullText.length > 40){
-        secs.push({ title:"Document", kicker:null, level:1, fullText });
+        secs.push({ title:"Document", kicker:null, level:1, blocks, fullText });
       }
     }
     return secs;
@@ -597,6 +630,133 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
       .split(/\r?\n/)
       .map(markdownLineToText);
     return joinBody(lines);
+  }
+
+  function markdownToBlocks(markdown, imageMap){
+    const lines = markdown.replace(/\r\n?/g,"\n").split("\n");
+    const blocks = [];
+    let textLines = [];
+    const flushText = () => {
+      const text = markdownToPlainText(textLines.join("\n"));
+      if(text) blocks.push({type:"text", text});
+      textLines = [];
+    };
+
+    for(let i=0; i<lines.length; i++){
+      const line = lines[i];
+      const trimmed = line.trim();
+      const image = parseImageLine(trimmed, imageMap);
+      if(image){
+        flushText();
+        const caption = collectCaption(lines, i + 1, /^fig(ure)?\.?\s*\d*/i);
+        if(caption.text) i = caption.end;
+        blocks.push({...image, caption:caption.text});
+        continue;
+      }
+
+      if(isTableStart(lines, i)){
+        flushText();
+        const table = collectTable(lines, i);
+        blocks.push(table.block);
+        i = table.end;
+        continue;
+      }
+
+      textLines.push(line);
+    }
+    flushText();
+    return blocks;
+  }
+
+  function spokenTextFromBlocks(blocks){
+    return blocks.filter(b=>b.type === "text").map(b=>b.text).join("\n\n").trim();
+  }
+
+  function createImageMap(images){
+    const map = new Map();
+    if(!Array.isArray(images)) return map;
+    images.forEach((img, index)=>{
+      const bytes = img?.bytes;
+      if(!bytes?.length) return;
+      const format = img.format || "png";
+      const blob = new Blob([new Uint8Array(bytes)], {type:`image/${format}`});
+      const url = URL.createObjectURL(blob);
+      imageObjectUrls.push(url);
+      const id = img.id || `image_${index}`;
+      map.set(id, url);
+      map.set(`image_${id}`, url);
+    });
+    return map;
+  }
+
+  function releaseImageUrls(){
+    imageObjectUrls.forEach(url=>URL.revokeObjectURL(url));
+    imageObjectUrls = [];
+  }
+
+  function parseImageLine(line, imageMap){
+    const m = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+    if(!m) return null;
+    const rawSrc = m[2].trim();
+    const key = rawSrc.replace(/^.*\//,"").replace(/\.[a-z0-9]+$/i,"");
+    return {
+      type:"figure",
+      alt:markdownLineToText(m[1] || "Figure"),
+      src:imageMap.get(key) || rawSrc,
+      missing:!imageMap.has(key) && !/^data:|^blob:|^https?:/i.test(rawSrc),
+    };
+  }
+
+  function collectCaption(lines, start, pattern){
+    let i = start;
+    while(i < lines.length && !lines[i].trim()) i++;
+    if(i >= lines.length || !pattern.test(lines[i].trim())) return {text:"", end:start - 1};
+    const captionLines = [];
+    for(; i<lines.length; i++){
+      const line = lines[i].trim();
+      if(!line) break;
+      if(parseHeading(line) || parseImageLine(line, new Map()) || isTableStart(lines, i)) break;
+      captionLines.push(line);
+    }
+    return {text:markdownToPlainText(captionLines.join("\n")), end:i - 1};
+  }
+
+  function isTableStart(lines, i){
+    return isTableLine(lines[i]) && isTableSeparator(lines[i + 1]);
+  }
+
+  function isTableLine(line){
+    return typeof line === "string" && /^\s*\|.*\|\s*$/.test(line);
+  }
+
+  function isTableSeparator(line){
+    return typeof line === "string" && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+  }
+
+  function collectTable(lines, start){
+    const tableLines = [];
+    let i = start;
+    for(; i<lines.length && isTableLine(lines[i]); i++){
+      if(!isTableSeparator(lines[i])) tableLines.push(lines[i]);
+    }
+    const rows = tableLines.map(parseTableRow).filter(row=>row.length);
+    const block = {type:"table", rows, caption:""};
+
+    const caption = collectCaption(lines, i, /^table\.?\s*\d*/i);
+    if(caption.text){
+      block.caption = caption.text;
+      i = caption.end + 1;
+    }
+
+    return {block, end:i - 1};
+  }
+
+  function parseTableRow(line){
+    return line.trim()
+      .replace(/^\|/,"")
+      .replace(/\|$/,"")
+      .split("|")
+      .map(cell=>markdownLineToText(cell));
   }
 
   function markdownLineToText(line){
@@ -732,33 +892,17 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
     body.classList.remove("playing");
     secSentences = []; wordEls = []; sentenceEls = [];
 
-    if(!sec.fullText || sec.fullText.trim().length < 2){
+    const blocks = sec.blocks?.length ? sec.blocks : [{type:"text", text:sec.fullText || ""}];
+    if(!blocks.length || (!sec.fullText || sec.fullText.trim().length < 2) && !blocks.some(b=>b.type !== "text")){
       const note = document.createElement("div");
       note.className = "empty-note";
       note.innerHTML = "<b>No body text here.</b> This looks like a heading with no extractable paragraph beneath it — try the next section.";
       body.appendChild(note);
     }else{
-      const sents = splitSentences(sec.fullText);
-      sents.forEach((s, i) => {
-        secSentences.push({text:s});
-        const span = document.createElement("span");
-        span.className = "sentence"; span.dataset.i = i;
-        span.addEventListener("click", () => seekToSentence(i));
-        const words = tokenizeWords(s);
-        wordEls[i] = [];
-        let cursor = 0;
-        words.forEach(w => {
-          if(w.start > cursor) span.appendChild(document.createTextNode(s.slice(cursor, w.start)));
-          const ws = document.createElement("span");
-          ws.className = "word"; ws.textContent = w.text;
-          ws.dataset.s = w.start; ws.dataset.e = w.end;
-          span.appendChild(ws); wordEls[i].push(ws);
-          cursor = w.end;
-        });
-        if(cursor < s.length) span.appendChild(document.createTextNode(s.slice(cursor)));
-        span.appendChild(document.createTextNode(" "));
-        body.appendChild(span);
-        sentenceEls.push(span);
+      blocks.forEach(block=>{
+        if(block.type === "text") renderTextBlock(block.text, body);
+        else if(block.type === "figure") renderFigureBlock(block, body);
+        else if(block.type === "table") renderTableBlock(block, body);
       });
     }
 
@@ -769,6 +913,101 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
     const stage = $("stage"); stage.scrollTop = 0;
     setProgress(0);
     setStatus();
+  }
+
+  function renderTextBlock(text, body){
+    const textBlock = document.createElement("p");
+    textBlock.className = "text-block";
+    const sents = splitSentences(text);
+    sents.forEach((s) => {
+      const i = secSentences.length;
+      secSentences.push({text:s});
+      const span = document.createElement("span");
+      span.className = "sentence"; span.dataset.i = i;
+      span.addEventListener("click", () => seekToSentence(i));
+      const words = tokenizeWords(s);
+      wordEls[i] = [];
+      let cursor = 0;
+      words.forEach(w => {
+        if(w.start > cursor) span.appendChild(document.createTextNode(s.slice(cursor, w.start)));
+        const ws = document.createElement("span");
+        ws.className = "word"; ws.textContent = w.text;
+        ws.dataset.s = w.start; ws.dataset.e = w.end;
+        span.appendChild(ws); wordEls[i].push(ws);
+        cursor = w.end;
+      });
+      if(cursor < s.length) span.appendChild(document.createTextNode(s.slice(cursor)));
+      span.appendChild(document.createTextNode(" "));
+      textBlock.appendChild(span);
+      sentenceEls.push(span);
+    });
+    body.appendChild(textBlock);
+  }
+
+  function renderFigureBlock(block, body){
+    const figure = document.createElement("figure");
+    figure.className = "media-block figure-block";
+    figure.dataset.spoken = "false";
+
+    const label = document.createElement("span");
+    label.className = "media-label";
+    label.textContent = "Figure";
+    figure.appendChild(label);
+
+    if(block.missing){
+      const missing = document.createElement("div");
+      missing.className = "missing-image";
+      missing.textContent = block.alt || "Figure image unavailable";
+      figure.appendChild(missing);
+    }else{
+      const img = document.createElement("img");
+      img.src = block.src;
+      img.alt = block.alt || block.caption || "Figure";
+      figure.appendChild(img);
+    }
+
+    if(block.caption){
+      const caption = document.createElement("figcaption");
+      caption.className = "media-caption";
+      caption.textContent = block.caption;
+      figure.appendChild(caption);
+    }
+    body.appendChild(figure);
+  }
+
+  function renderTableBlock(block, body){
+    const wrap = document.createElement("figure");
+    wrap.className = "media-block table-block";
+    wrap.dataset.spoken = "false";
+
+    const label = document.createElement("span");
+    label.className = "media-label";
+    label.textContent = "Table";
+    wrap.appendChild(label);
+
+    const scroll = document.createElement("div");
+    scroll.className = "table-scroll";
+    const table = document.createElement("table");
+    const rows = block.rows || [];
+    rows.forEach((row, rowIndex)=>{
+      const tr = document.createElement("tr");
+      row.forEach(cell=>{
+        const el = document.createElement(rowIndex === 0 ? "th" : "td");
+        el.textContent = cell;
+        tr.appendChild(el);
+      });
+      table.appendChild(tr);
+    });
+    scroll.appendChild(table);
+    wrap.appendChild(scroll);
+
+    if(block.caption){
+      const caption = document.createElement("figcaption");
+      caption.className = "media-caption";
+      caption.textContent = block.caption;
+      wrap.appendChild(caption);
+    }
+    body.appendChild(wrap);
   }
 
   // ====================================================
@@ -865,8 +1104,27 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
     if(!sel || sel.isCollapsed) return "";
     const body = $("sectionBody");
     if(!sel.anchorNode || !body.contains(sel.anchorNode)) return "";
-    const t = sel.toString().trim();
+    if(!sel.rangeCount) return "";
+    const range = sel.getRangeAt(0);
+    const t = sentenceEls.map(el=>selectedTextWithin(range, el)).filter(Boolean).join(" ").trim();
     return t.length > 1 ? t : "";
+  }
+
+  function selectedTextWithin(selectionRange, el){
+    try{
+      if(!selectionRange.intersectsNode(el)) return "";
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      if(el.contains(selectionRange.startContainer)){
+        range.setStart(selectionRange.startContainer, selectionRange.startOffset);
+      }
+      if(el.contains(selectionRange.endContainer)){
+        range.setEnd(selectionRange.endContainer, selectionRange.endOffset);
+      }
+      return range.toString().trim();
+    }catch{
+      return "";
+    }
   }
 
   // ---- play button ----
@@ -1055,6 +1313,7 @@ import liteparseWasmUrl from "@llamaindex/liteparse-wasm/liteparse_wasm_bg.wasm?
   // ---------- new session ----------
   $("newSessionBtn").addEventListener("click", ()=>{
     stopPlayback();
+    releaseImageUrls();
     sections = []; activeSection = -1; secSentences = []; wordEls = []; sentenceEls = [];
     startSentence = 0; setProgress(0);
     $("sectionBody").innerHTML=""; $("sectionTitle").textContent=""; $("sectionKicker").textContent="";
